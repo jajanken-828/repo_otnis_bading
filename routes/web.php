@@ -66,6 +66,11 @@ Route::prefix('dashboard/hrm')->name('hrm.')->middleware(['auth', 'verified'])->
         ->middleware(['role:HRM', 'position:staff'])
         ->name('employee.training');
 
+    // New Grading Route
+    Route::post('/training/grade/{id}', [TrainingController::class, 'submitGrade'])
+        ->middleware(['role:HRM', 'position:staff'])
+        ->name('training.grade');
+
     /**
      * PROMOTION SUGGESTION ROUTE (Staff Side)
      * This connects the Training.vue modal to TrainingController@suggestPromotion

@@ -109,6 +109,11 @@ class User extends Authenticatable
         return $query->where('role', 'ECO');
     }
 
+    public function traineeGrade()
+    {
+        return $this->hasOne(TraineeGrade::class);
+    }
+
     /**
      * Get appropriate dashboard path based on department and position
      */

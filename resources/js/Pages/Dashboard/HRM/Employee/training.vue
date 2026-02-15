@@ -1,5 +1,5 @@
 <script setup>
-import { Head, Link, router } from '@inertiajs/vue3'
+import { Head, Link, router, useForm } from '@inertiajs/vue3'
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
 import { ref, computed } from 'vue'
 import {
@@ -21,7 +21,8 @@ import {
     LayoutDashboard,
     X,
     CheckCircle,
-    BadgeCheck
+    BadgeCheck,
+    Star
 } from 'lucide-vue-next'
 
 const props = defineProps({
@@ -35,6 +36,7 @@ const props = defineProps({
    MODAL & TOAST STATE
 --------------------------*/
 const isConfirmModalOpen = ref(false)
+const isGradeModalOpen = ref(false) // Modal for Coursework/Grading
 const selectedTrainee = ref(null)
 const showToast = ref(false)
 const toastMessage = ref('')
@@ -46,9 +48,53 @@ const triggerToast = (msg) => {
 };
 
 /* -------------------------
+   GRADING / COURSEWORK LOGIC
+--------------------------*/
+const gradeForm = useForm({
+    skills_performance: 0,
+    behaviour: 0,
+    technicals: 0,
+    safety_awareness: 0,
+    productivity: 0
+})
+
+const openGradeModal = (trainee) => {
+    selectedTrainee.value = trainee;
+    // Pre-fill stars if the trainee already has a grade record
+    if (trainee.trainee_grade) {
+        gradeForm.skills_performance = trainee.trainee_grade.skills_performance;
+        gradeForm.behaviour = trainee.trainee_grade.behaviour;
+        gradeForm.technicals = trainee.trainee_grade.technicals;
+        gradeForm.safety_awareness = trainee.trainee_grade.safety_awareness;
+        gradeForm.productivity = trainee.trainee_grade.productivity;
+    } else {
+        gradeForm.reset();
+    }
+    isGradeModalOpen.value = true;
+}
+
+const submitGrades = () => {
+    gradeForm.post(route('hrm.training.grade', selectedTrainee.value.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            triggerToast(`Grades updated for ${selectedTrainee.value.name}`);
+            isGradeModalOpen.value = false;
+        }
+    })
+}
+
+/* -------------------------
    PROMOTION SUGGESTION LOGIC
 --------------------------*/
 const openConfirmModal = (trainee) => {
+    // Check if grade reaches 80% (Total stars / 25 * 100)
+    const grade = trainee.trainee_grade ? trainee.trainee_grade.total_percentage : 0;
+
+    if (grade < 80) {
+        triggerToast(`Cannot suggest promotion. ${trainee.name} current grade is ${grade}%. (80% Required)`);
+        return;
+    }
+
     selectedTrainee.value = trainee;
     isConfirmModalOpen.value = true;
 }
@@ -56,7 +102,6 @@ const openConfirmModal = (trainee) => {
 const confirmPromotion = () => {
     if (!selectedTrainee.value) return;
 
-    // Send suggestion to HR Manager instead of direct promotion
     router.post(route('hrm.training.suggest-promotion', selectedTrainee.value.id), {}, {
         preserveScroll: true,
         onSuccess: () => {
@@ -72,13 +117,11 @@ const confirmPromotion = () => {
 
 const searchQuery = ref('')
 
-// Filter out anyone who is no longer a 'trainee' or already suggested
 const filteredTrainees = computed(() => {
     return props.trainees.filter(t => {
         const matchesSearch = t.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
             t.role.toLowerCase().includes(searchQuery.value.toLowerCase());
         const isStillTrainee = t.position === 'trainee';
-        // We hide them from this list once suggested, or you can add a "Pending" badge
         const isNotSuggested = !t.promotion_suggested;
 
         return matchesSearch && isStillTrainee && isNotSuggested;
@@ -110,6 +153,47 @@ const getRoleBadgeColor = (role) => {
                 <p class="text-sm font-bold uppercase tracking-tight">{{ toastMessage }}</p>
             </div>
         </Transition>
+
+        <div v-if="isGradeModalOpen" class="fixed inset-0 z-[120] flex items-center justify-center p-4">
+            <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="isGradeModalOpen = false"></div>
+            <div class="relative w-full max-w-md bg-white rounded-[2.5rem] p-8 shadow-2xl">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-black text-slate-900 uppercase">Coursework Grading</h3>
+                    <button @click="isGradeModalOpen = false" class="text-slate-400 hover:text-slate-600">
+                        <X class="h-6 w-6" />
+                    </button>
+                </div>
+
+                <p class="text-sm text-slate-500 mb-6">Rate <b>{{ selectedTrainee?.name }}</b> based on their training
+                    performance.</p>
+
+                <div class="space-y-6">
+                    <div v-for="criterion in [
+                        { id: 'skills_performance', label: 'Skills Performance' },
+                        { id: 'behaviour', label: 'Behaviour' },
+                        { id: 'technicals', label: 'Technicals' },
+                        { id: 'safety_awareness', label: 'Safety Awareness' },
+                        { id: 'productivity', label: 'Productivity' }
+                    ]" :key="criterion.id">
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{{
+                            criterion.label }}</p>
+                        <div class="flex gap-2">
+                            <button v-for="star in 5" :key="star" @click="gradeForm[criterion.id] = star" type="button">
+                                <Star
+                                    :class="[gradeForm[criterion.id] >= star ? 'text-amber-400 fill-amber-400' : 'text-slate-200', 'h-6 w-6 transition-colors']" />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-8 flex flex-col gap-3">
+                    <button @click="submitGrades"
+                        class="w-full bg-slate-900 text-white py-4 rounded-xl font-bold uppercase text-xs tracking-widest hover:bg-blue-600 transition-all">
+                        Save Trainee Grades
+                    </button>
+                </div>
+            </div>
+        </div>
 
         <div v-if="isConfirmModalOpen" class="fixed inset-0 z-[120] flex items-center justify-center p-4">
             <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="isConfirmModalOpen = false"></div>
@@ -211,31 +295,35 @@ const getRoleBadgeColor = (role) => {
                                     </div>
                                 </div>
                             </div>
-                            <button class="p-2 text-slate-300 hover:text-slate-600 rounded-xl">
-                                <MoreHorizontal class="h-5 w-5" />
-                            </button>
                         </div>
 
                         <div class="space-y-4">
                             <div class="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl">
                                 <div class="flex justify-between items-center mb-2">
-                                    <p class="text-[10px] font-black text-slate-400 uppercase">Training Progress</p>
-                                    <p class="text-[10px] font-black text-blue-600">45%</p>
+                                    <p class="text-[10px] font-black text-slate-400 uppercase">Trainee Grade</p>
+                                    <p
+                                        :class="[(trainee.trainee_grade?.total_percentage || 0) >= 80 ? 'text-emerald-500' : 'text-blue-600', 'text-[10px] font-black']">
+                                        {{ trainee.trainee_grade ? trainee.trainee_grade.total_percentage : 0 }}%
+                                    </p>
                                 </div>
                                 <div class="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
-                                    <div class="bg-blue-600 h-full w-[45%] rounded-full transition-all"></div>
+                                    <div :class="[(trainee.trainee_grade?.total_percentage || 0) >= 80 ? 'bg-emerald-500' : 'bg-blue-600', 'h-full transition-all']"
+                                        :style="{ width: (trainee.trainee_grade ? trainee.trainee_grade.total_percentage : 0) + '%' }">
+                                    </div>
                                 </div>
                             </div>
 
                             <div class="flex gap-2">
-                                <button
-                                    class="flex-1 flex items-center justify-center gap-2 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-lg shadow-slate-200 dark:shadow-none">
+                                <button @click="openGradeModal(trainee)"
+                                    class="flex-1 flex items-center justify-center gap-2 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-lg">
                                     <LayoutDashboard class="h-3.5 w-3.5" /> Coursework
                                 </button>
+
                                 <button @click="openConfirmModal(trainee)"
                                     class="px-4 py-3 bg-slate-50 text-slate-400 rounded-xl hover:bg-blue-50 hover:text-blue-600 transition-all border border-transparent hover:border-blue-100"
-                                    title="Suggest Promotion">
-                                    <UserCheck class="h-4 w-4" />
+                                    :title="(trainee.trainee_grade?.total_percentage || 0) < 80 ? 'Grade must be at least 80%' : 'Suggest Promotion'">
+                                    <UserCheck
+                                        :class="[(trainee.trainee_grade?.total_percentage || 0) >= 80 ? 'text-emerald-500' : '', 'h-4 w-4']" />
                                 </button>
                             </div>
                         </div>
@@ -248,7 +336,6 @@ const getRoleBadgeColor = (role) => {
                         <User class="h-10 w-10 text-slate-200" />
                     </div>
                     <h3 class="text-lg font-bold text-slate-400">No trainees found</h3>
-                    <p class="text-sm text-slate-400">Try adjusting your search or complete an onboarding.</p>
                 </div>
             </div>
         </div>

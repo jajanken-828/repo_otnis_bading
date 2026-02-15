@@ -73,8 +73,13 @@ class DashboardController extends Controller
             ]);
         }
 
+        // HRM Staff / Employee View: Displays all users from the table
         return Inertia::render('Dashboard/HRM/Employee/Index', [
+            'employees' => User::all(), // Fetches all data from users table
             'stats' => [
+                'total' => User::count(),
+                'present' => User::where('is_active', true)->count(),
+                'on_leave' => 0, // Placeholder: Integrate with your leave table logic later
                 'assignedTasks' => 4,
                 'leaveBalance' => 15,
                 'trainingModules' => 2,
